@@ -4,6 +4,8 @@ namespace React\Socket;
 
 use Evenement\EventEmitter;
 use React\EventLoop\LoopInterface;
+use React\Uri\InvalidUriException;
+use React\Uri\Uri;
 
 /** @event connection */
 class Server extends EventEmitter implements ServerInterface
@@ -16,16 +18,35 @@ class Server extends EventEmitter implements ServerInterface
         $this->loop = $loop;
     }
 
-    public function listen($port, $host = '127.0.0.1')
+    private function createContext($ctx)
     {
-        if (strpos($host, ':') !== false) {
-            // enclose IPv6 addresses in square brackets before appending port
-            $host = '[' . $host . ']';
+        if (!is_resource($ctx)) {
+            $options = (array) $ctx;
+        } else if (false === $options = stream_context_get_options($ctx)) {
+            $options = [];
         }
 
-        $this->master = @stream_socket_server("tcp://$host:$port", $errno, $errstr);
+        return stream_context_create($options);
+    }
+
+    public function listen($uri, $ctx = null)
+    {
+        if (!$uri instanceof Uri) {
+            try {
+                $uri = new Uri($uri);
+            } catch (InvalidUriException $e) {
+                $message = "Invalid URI: {$uri}";
+                throw new ConnectionException($message, 0, $e);
+            }
+        }
+
+        $localSockAddr = $uri->getConnectionString(['scheme', 'host', 'port'], ['scheme' => 'tcp']);
+        $flags = STREAM_SERVER_BIND | STREAM_SERVER_LISTEN;
+        $ctx = $this->createContext($ctx);
+
+        $this->master = @stream_socket_server($localSockAddr, $errno, $errstr, $flags, $ctx);
         if (false === $this->master) {
-            $message = "Could not bind to tcp://$host:$port: $errstr";
+            $message = "Could not bind to {$uri}: $errstr";
             throw new ConnectionException($message, $errno);
         }
         stream_set_blocking($this->master, 0);
