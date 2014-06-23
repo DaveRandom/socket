@@ -52,8 +52,10 @@ class SecureConnection extends Connection
 
     public function handleData($stream)
     {
-        if ($this->cryptoEnabled || $this->enableCrypto($stream)) {
+        if ($this->cryptoEnabled) {
             parent::handleData($stream);
+        } else {
+            $this->enableCrypto($stream);
         }
     }
 }
